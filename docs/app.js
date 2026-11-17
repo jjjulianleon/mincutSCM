@@ -21,6 +21,7 @@ for (const [id, partes] of Object.entries(D.geo)) {
       .setContent(`<b>${c.n}</b><br>${c.paises.join(", ")}<br>RFS: ${c.rfs ?? "?"}${c.plan ? " · <b>planeado</b>" : ""}`)
       .openOn(map));
 }
+const capaCorte = L.featureGroup().addTo(map);
 const capaLp = {};
 for (const [id, [x, y, nombre, pais]] of Object.entries(D.lps)) {
   capaLp[id] = L.circleMarker([y, x], { radius: 2, weight: 0, fillOpacity: .6 }).bindTooltip(nombre);
@@ -52,7 +53,7 @@ function pintarMapa() {
     if (!visible(id)) { estilo[id] = null; continue; }
     const delPais = r && c.paises.includes(S.pais) && c.paises.length > 1;
     estilo[id] = r
-      ? { color: delPais ? c.col : "#9aa5b1", weight: delPais ? 2 : 1, opacity: delPais ? .85 : .25, dashArray: c.plan ? "4 4" : null }
+      ? { color: delPais ? "#6b7480" : "#9aa5b1", weight: delPais ? 2 : 1, opacity: delPais ? .6 : .25, dashArray: c.plan ? "4 4" : null }
       : { color: c.col, weight: 1.5, opacity: .8, dashArray: c.plan ? "4 4" : null };
   }
   const arriba = [];
@@ -69,9 +70,12 @@ function pintarMapa() {
         if (S.ruta !== null && S.ruta !== i) return;
         cablesDe(ru).forEach(id => { estilo[id] = { color: PALETA[i % PALETA.length], weight: 3.5, opacity: .95 }; arriba.push(id); });
       });
-      r.corte.forEach(id => { estilo[id] = { color: "#e5484d", weight: 5, opacity: 1, dashArray: null }; arriba.push(id); });
     }
   }
+  // el corte va como trazo rojo punteado ENCIMA del color de su ruta, para que se vean las dos cosas
+  capaCorte.clearLayers();
+  if (r && S.paso < 0 && S.ruta === null) r.corte.forEach(id => capaCable[id] &&
+    capaCorte.addLayer(L.polyline(capaCable[id].getLatLngs(), { color: "#e5484d", weight: 2.5, dashArray: "2 7", interactive: false })));
   for (const id in capaCable) {
     const l = capaCable[id];
     if (!estilo[id]) { map.removeLayer(l); continue; }
@@ -79,6 +83,7 @@ function pintarMapa() {
     if (!map.hasLayer(l)) l.addTo(map);
   }
   arriba.forEach(id => capaCable[id] && map.hasLayer(capaCable[id]) && capaCable[id].bringToFront());
+  capaCorte.bringToFront();
   pintarEstaciones();
   pintarLeyenda(r);
 }
@@ -105,7 +110,8 @@ function pintarLeyenda(r) {
   const fila = (c, t, dash) => `<div><i style="background:${c};${dash ? "background:repeating-linear-gradient(90deg," + c + " 0 5px,transparent 5px 8px)" : ""}"></i>${t}</div>`;
   let h = "";
   if (r && S.paso >= 0) h = fila("#f59e0b", "aumento actual") + fila("#f59e0b", "usa arista inversa", 1) + fila("#3b82f6", "aumentos anteriores");
-  else if (r) h = fila("#e5484d", "corte mínimo") + `<div><i style="background:linear-gradient(90deg,${PALETA.slice(0, 4).join(",")})"></i>rutas independientes (un color c/u)</div>` + `<div><i style="background:#1b1b1f;height:8px;width:8px;border-radius:50%"></i>estaciones de ${esc_(S.pais)}</div>`;
+  else if (r) h = `<div><i style="background:linear-gradient(90deg,${PALETA.slice(0, 4).join(",")})"></i>rutas independientes (un color c/u)</div>` +
+    (S.ruta === null ? fila("#e5484d", "cable del corte mínimo", 1) : "") + `<div><i style="background:#1b1b1f;height:8px;width:8px;border-radius:50%"></i>estaciones de ${esc_(S.pais)}</div>`;
   if (S.tab === "3") h += `<div><i style="background:linear-gradient(90deg,hsl(200,75%,45%),hsl(150,75%,45%),hsl(100,75%,45%),hsl(50,75%,45%),hsl(0,75%,45%))"></i>min-cut del país (bajo → alto)</div>`;
   if (S.esc === "planeados") h += fila("#666", "cable planeado", 1);
   $("#legend").innerHTML = h;
@@ -141,7 +147,8 @@ function detalle(p) {
   if (r.corte_alt) h += `<p class="muted">Hay otro corte mínimo distinto (el corte mínimo no es único, diap. 14 de min-cut):</p>` +
     r.corte_alt.map(id => `<span class="chip" data-cable="${id}">${esc_(nombre(id))}</span>`).join("");
   h += `<h3>Certificado: ${r.rutas.length} rutas que no comparten cable</h3>
-    <p class="muted">Cada cable aguanta 1, así que estas rutas no comparten ningún cable. Para aislar el país hay que romper al menos un cable de cada una: con menos de ${r.v} no alcanza.</p>` +
+    <p class="muted">Cada cable aguanta 1, así que estas rutas no comparten ningún cable. Para aislar el país hay que romper al menos un cable de cada una: con menos de ${r.v} no alcanza.
+    <b>Toca una ruta para verla sola en el mapa.</b> Se dibuja el cable completo, aunque la ruta solo use el tramo entre los países que nombra.</p>` +
     r.rutas.map((ru, i) => `<div class="route${S.ruta === i ? " on" : ""}" data-ruta="${i}"><span class="dot" style="background:${PALETA[i % PALETA.length]}"></span>${txtRuta(ru)}</div>`).join("");
   const n = r.pasos.length, k = S.paso;
   h += `<h3>Edmonds-Karp paso a paso</h3>
@@ -241,7 +248,11 @@ $("#panel").addEventListener("click", e => {
   const el = e.target.closest("[data-pais],[data-ruta],[data-paso],[data-cable]"); if (!el) return;
   if (el.dataset.pais) { S.pais = el.dataset.pais; sel[S.tab] = S.pais; S.paso = -1; S.ruta = null; render(true); return; }
   if (el.dataset.cable) { const l = capaCable[el.dataset.cable]; l && map.fitBounds(l.getBounds(), { padding: [40, 40], maxZoom: 5 }); return; }
-  if (el.dataset.ruta) { const i = +el.dataset.ruta; S.ruta = S.ruta === i ? null : i; S.paso = -1; render(false); return; }
+  if (el.dataset.ruta) {
+    const i = +el.dataset.ruta; S.ruta = S.ruta === i ? null : i; S.paso = -1; render(S.ruta === null);
+    if (S.ruta !== null) map.fitBounds(L.featureGroup(cablesDe(res()[S.pais].rutas[i]).map(id => capaCable[id])).getBounds(), { padding: [30, 30], maxZoom: 5 });
+    return;
+  }
   const n = res()[S.pais].pasos.length, a = el.dataset.paso;
   if (a === "prev") S.paso = S.paso === -1 ? n - 1 : S.paso - 1;
   if (a === "next") S.paso = S.paso === -1 ? 0 : (S.paso + 1 >= n ? -1 : S.paso + 1);
