@@ -2,6 +2,8 @@
 
 Resiliencia de la red de cables submarinos con **max-flow / min-cut** (CMP-4007 Algoritmos Avanzados).
 
+**Demo en línea:** https://jjjulianleon.github.io/mincutSCM/
+
 1. **Ecuador.** ¿Cuántos cables tienen que fallar, como mínimo, para que Ecuador se quede sin ninguna ruta submarina hacia Estados Unidos? ¿Cuáles son?
 2. **Ranking.** Con la misma medida, de más a menos resiliente: Ecuador, Colombia, Perú, Chile, Argentina, Uruguay, Brasil, Venezuela, Panamá y México.
 3. **Abierta.** ¿Cuál es el país más resiliente del mundo? ¿Le creemos al resultado?
